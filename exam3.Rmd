@@ -1,0 +1,359 @@
+---
+title: "DSFTSW-Exam3"
+author: "Alex Rigney"
+date: "7/9/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Here I'm loading a lot of libraries, so I don't have to do as much later.
+```{r}
+
+
+#Library time!
+library(rio)
+library(tidyverse)
+library(WDI)
+library(data.table)
+library(labelled)
+library(labelled)
+library(data.table)
+library(varhandle)
+library(ggrepel)
+library(geosphere)
+library(rgeos)
+library(viridis)
+library(mapview)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(devtools)
+library(remotes)
+library(raster)
+library(sp)
+library(sf)
+library(Imap)
+library(countrycode)
+library(shiny)
+library(leaflet)
+library(shinydashboard)
+library(V8)
+library(shinyjs)
+library(RColorBrewer)
+library(readr)
+library(tidyr)
+library(leaflet.extras)
+library(htmltools)
+library(shinyWidgets)
+library(ggplot2)
+library(tidycensus)
+library(rvest)
+library(XML)
+library(tidytext)
+library(stringr)
+library(tidyverse)
+
+census_api_key("54ca5907890a0d821d64fa09074c575b35ee63e1")
+```
+1. Clear the environment. [5 points]
+```{r}
+rm(list=ls(all=TRUE)) # clear environment
+```
+
+
+
+2. Use the tidycensus package to 
+(a) find the inequality Gini index variable explained
+on the last exam, 
+
+```{r}
+#Load the data set!
+v15 <- load_variables(year = 2015,
+"acs5")
+
+View(v15)
+
+#The Gini variable is: B19083_001
+
+
+v10 <- load_variables(year = 2010,
+"acs5")
+
+View(v10)
+
+#Gini for 2010: B19083_001, which is the same
+```
+
+
+(b) import in the state-level inequality Gini estimates for 2010 and
+2015 in the five-year American Community Survey as a single panel dataset; 
+```{r}
+library(tidyverse)
+#Import the 2015, 2010 gini estimates dataset
+inequality_panel15 <- get_acs(geography = "state",
+variables = c("2015" = c("B19083_001")),
+year = 2015)
+
+inequality_panel15
+
+inequality_panel10 <- get_acs(geography = "state",
+variables = c("2010" = c("B19083_001")),
+year = 2010)
+
+inequality_panel10
+
+inequality_panel <- bind_rows(inequality_panel10, inequality_panel15)
+inequality_panel
+```
+
+
+(c) rename estimate as gini in your final data frame, which you should call inequality_panel;
+
+```{r}
+setnames(inequality_panel, "estimate", "gini")
+```
+
+
+(d) rename NAME to state as well; 
+
+```{r}
+setnames(inequality_panel, "NAME", "state")
+```
+
+
+(e) ensure that inequality_panel has a year variable so we can distinguish between the 2010 and 2015 gini index data; and 
+
+```{r}
+setnames(inequality_panel, "variable", "year")
+```
+
+
+(f) as a final step, run the head() command so we can get a quick peak at inequality_panel
+(Hint: you may need to import each year separately and then append the two data
+frames together.) [15 points]
+
+```{r}
+head(inequality_panel)
+```
+
+
+
+3. Reshape the inequality_panel wide, such that the gini values for 2010 and 2015
+have their own columns. Also, please keep both the state and GEOID variables. Call
+the resulting data frame inequality_wide. After you are done with the reshape, run
+the head() command so we can get a quick peak at the data. [5 points]
+
+```{r}
+inequality_wide <- 
+  inequality_panel %>%
+pivot_wider(id_cols = c("GEOID", "state", "year"), # unique IDs
+names_from = "year", # names for new wide vars
+values_from = "gini", # data to put in new wide vars
+names_prefix = "gini_" ) # prefix to add before years
+
+head(inequality_wide)
+```
+
+
+4. Reshape inequality_wide to long format. Once you are done, run the head() command so we can get a quick peak at the data. [5 points]
+
+```{r}
+inequality_long <-
+  inequality_wide %>%
+  pivot_longer(cols = starts_with("gini"), # use columns starting with "year"
+  names_to ="year", # name of new column
+  names_prefix = "gini_", # part of string to drop
+  values_to = "gini", # where to put numeric values
+  values_drop_na = FALSE)
+
+head(inequality_long)
+```
+
+
+5. Show with some R code that inequality_panel and inequality_long have the same
+number of observations. [5 points]
+
+```{r}
+nrow(inequality_long)==nrow(inequality_panel)
+```
+
+
+6. Collapse the inequality_long data frame by state, such that you obtain a single mean
+gini score for each state for the years 2010 and 2015. When collapsing, also keep both
+the GEOID and state variables. Call your resulting data frame inequality_collapsed.
+[5 points]
+
+```{r}
+inequality_collapsed <-
+  inequality_long %>%
+  group_by(GEOID, state) %>% # tell R the unique IDs
+  summarize(across(where(is.numeric), mean))   # summarize numeric vars by mean
+  
+```
+
+
+7. Produce a map of the United States that colors in the state polygons by their mean
+gini scores from inequality_collapsed, using the WGS84 coordinate system. When
+2 doing so, use the viridis color scheme. (Note: there are a few different ways to produce
+the map. We will accept any one of these ways, and the answer key will detail 3 ways.
+If you want to choose the method with the shape file, you can get the state-level shape
+file on the Census page). [10 points]
+
+```{r}
+library(rnaturalearthhires)
+us <- ne_countries(country = 'United States of America', scale = "large", returnclass = "sf")
+
+# us map(basic)
+us_basic <- ggplot() +
+  geom_sf(data = us) 
+  geom_sf(data = inequality_collapsed, aes(color=gini))
+print(us_basic)
+  
+```
+
+
+8. Use the WDI package to import in data on Gross Domestic Product (GDP) in current
+US dollars. When doing so, include all countries and only the years 2006 and 2007.
+Rename your GDP variable to gdp_current. [5 points]
+
+```{r}
+library(WDI)
+
+
+```
+
+
+9. Deflate gdp_current to constant 2010 or 2015 US dollars, and call the new variable
+gdp_deflated. In words, also tell us the base year that you picked and why. At the
+end, run a head() command to prove that everything works. [5 points]
+
+```{r}
+gdp_current = WDI(country = "all", indicator = c("NY.GDP.DEFL.ZS"),
+  start = 2006, 
+  end = 2007, 
+  extra = FALSE, cache = NULL)
+```
+
+
+10. In a Shiny app, what are the three main components and their subcomponents? [5
+points]
+
+The main components are the UI, Server, and Execution
+The UI also has input and output components and the server holds the actual code that determines what happens to inputs to produce the outputs.
+
+
+
+
+11. Pull this .pdf file from Mike Denly’s webpage. It is a report on governance in Armenia
+that Mike Denly and Mike Findley prepared for the US Agency for International
+Development (USAID). [5 points]
+
+```{r}
+library(pdftools)
+mytext=pdf_text(pdf = "https://pdf.usaid.gov/pdf_docs/PA00TNMG.pdf")
+
+
+```
+
+
+12. Convert the text pulled from this .pdf file to a data frame, using the ,
+stringsAsFactors=FALSE option. Call the data frame armeniatext. [5 points]
+
+```{r}
+mytext <- as.data.frame(mytext)
+mytext$page=c(1:65)
+colnames(mytext)[which(names(mytext) == "mytext")] <- "text" #change column name
+armeniatext <- mytext
+```
+
+
+13. Tokenize the data by word and then remove stop words. [5 points]
+
+```{r}
+
+armeniatext=armeniatext %>%
+unnest_tokens(word, text)
+data(stop_words)
+armeniatext <- armeniatext %>%
+  anti_join(stop_words)
+
+```
+
+
+14. Figure out the top 5 most used word in the report. [5 points]
+
+```{r}
+wordfreq <- armeniatext %>%
+count(word, sort = TRUE)
+head(wordfreq, 5)
+
+```
+
+
+15. Load the Billboard Hot 100 webpage, which we explored in the course modules. Name
+the list object: hot100exam [5 points]
+```{r}
+hot100page <- "https://www.billboard.com/charts/hot-100"
+hot100exam <- read_html(hot100page)
+
+```
+
+
+16. Use rvest to obtain identify all of the nodes in the webpage. [5 points]
+
+```{r}
+body_nodes <- hot100exam %>%
+html_node("body") %>%
+html_children()
+body_nodes
+```
+
+
+17. Use Google Chrome developer to identify the necessary tags and pull the data on Rank,
+Artist, Title, and Last Week. HINT 1: In class we showed you how to get the first three
+of these. You simply need to add the Last Week ranking. HINT 2: You can navigate
+two ways. Hovering to find what you need or by doing Cmd+F / Ctrl+F and using
+actual data to find the location. HINT 3: You’re looking to update the code based on
+the way the information is in referenced. Try out some different options and see what
+shows up in the environment. Keep trying until you see that you have a chr [1:100]
+with values that correspond to what is in the web page. [5 points]
+
+```{r}
+rank <- hot100exam %>%
+rvest::html_nodes('body') %>%
+xml2::xml_find_all("//span[contains(@class,
+'chart-element__rank__number')]") %>%
+rvest::html_text()
+
+artist <- hot100exam %>%
+rvest::html_nodes('body') %>%
+xml2::xml_find_all("//span[contains(@class,
+'chart-element__information__artist')]") %>%
+rvest::html_text()
+
+title <- hot100exam %>%
+rvest::html_nodes('body') %>%
+xml2::xml_find_all("//span[contains(@class,
+'chart-element__information__song')]") %>%
+rvest::html_text()
+
+lastweek <- hot100exam %>%
+rvest::html_nodes('body') %>%
+xml2::xml_find_all("//span[contains(@class,
+'chart-element__meta text--center color--secondary text--last')]") %>%
+rvest::html_text()
+
+#<div class="chart-element__meta text--center color--secondary text--last">1</div>
+
+```
+
+
+Final question. Save all of the files (i.e. .Rmd, .dta, .pdf/Word Doc), push them to your
+GitHub repo, and provide us with the link to that repo. [no points; 15-point penalty for lack
+of submission (see above)]
+
+
+
